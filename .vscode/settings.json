@@ -1,0 +1,7 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "&": true,
+        "ForEach-Object": true,
+        "Get-Command": true
+    }
+}
