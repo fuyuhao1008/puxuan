@@ -39,13 +39,39 @@ if (fontPath) {
   console.warn('⚠️ 中文字体文件未找到，"或"字可能显示异常');
 }
 
+// 可选：注册服务端绘制用的和弦字体（TTF/OTF）。
+// 用法：把字体文件放到 public/fonts/，并配置环境变量：
+// CHORD_FONT_FILE=fonts/YourFont.ttf
+let chordFontRegisteredFamily: string | null = null;
+try {
+  const chordFontFile = process.env.CHORD_FONT_FILE;
+  if (chordFontFile) {
+    const normalized = chordFontFile.replace(/^[/\\]+/, '').replace(/\\/g, '/');
+    const chordFontPath = path.join(process.cwd(), 'public', normalized);
+    if (fs.existsSync(chordFontPath)) {
+      registerFont(chordFontPath, { family: 'ChordFont' });
+      chordFontRegisteredFamily = '"ChordFont"';
+      console.log('✅ 和弦字体已注册: ChordFont, 路径:', chordFontPath);
+    } else {
+      console.warn('⚠️ CHORD_FONT_FILE 指向的字体文件未找到:', chordFontPath);
+    }
+  }
+} catch (error) {
+  console.warn('⚠️ 和弦字体注册失败，将使用系统默认字体:', error);
+}
+
 // 重新识别的模型配置（与第一次识别相同，使用快速模式）
 const MODEL_LITE = process.env.VISION_MODEL_LITE || 'doubao-seed-2-0-lite-260215';
 const MODEL_VISION = process.env.VISION_MODEL_VISION || 'doubao-seed-1-6-vision-250815';
 
-// 和弦/调号绘制字体（服务端 canvas）。默认 Times New Roman；可在 .env.local 覆盖：
-// CHORD_FONT_FAMILY="Times New Roman", Times, serif
-const CHORD_FONT_FAMILY = process.env.CHORD_FONT_FAMILY || '"Times New Roman", Times, serif';
+// 和弦/调号绘制字体（服务端 canvas）。
+// 优先使用注册的 ChordFont，其次使用可配置字体族；默认 Times New Roman。
+// 可在 .env.local / Vercel 环境变量覆盖：
+// - CHORD_FONT_FILE=fonts/YourFont.ttf （推荐，跨平台稳定）
+// - CHORD_FONT_FAMILY="Times New Roman", Times, serif
+const CHORD_FONT_FAMILY = chordFontRegisteredFamily
+  ? `${chordFontRegisteredFamily}, ${process.env.CHORD_FONT_FAMILY || '"Times New Roman", Times, serif'}`
+  : (process.env.CHORD_FONT_FAMILY || '"Times New Roman", Times, serif');
 
 // 箭头字体：优先使用和弦字体，若缺字形则回退到符号字体，避免出现“白色方框”。
 // 可在 .env.local 覆盖：ARROW_FONT_FAMILY="Times New Roman", "Segoe UI Symbol", serif
@@ -1365,6 +1391,7 @@ function rgbToHex(r: number, g: number, b: number): string {
     return hex.length === 1 ? '0' + hex : hex;
   }).join('');
 }
+
 
 /**
  * 调亮颜色

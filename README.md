@@ -237,6 +237,12 @@ VISION_ASSIST_ENABLED=true
 VISION_ASSIST_STRATEGY=window  # window | full
 VISION_ASSIST_TIMEOUT_MS=30000
 VISION_ASSIST_POST_LITE_WAIT_MS=8000
+
+# 服务端绘制字体（解决 Linux/Vercel 缺系统字体导致文字不显示）
+# 推荐：把字体文件放到 public/fonts/，并用 CHORD_FONT_FILE 指定它
+CHORD_FONT_FILE=fonts/YourFont.ttf
+# 可选：额外的回退字体族（当 CHORD_FONT_FILE 未配置或注册失败时使用）
+CHORD_FONT_FAMILY="Times New Roman", Times, serif
 ```
 
 #### 提示词优化
