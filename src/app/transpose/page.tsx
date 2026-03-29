@@ -359,6 +359,10 @@ export default function TransposePage() {
   // 图片宽高比（用于等待界面）
   const [imageAspectRatio, setImageAspectRatio] = useState<number>(4/3);
 
+  // 调试模式：仅在 URL 包含 ?debug=1 时展示关键 debug 信息（方便手机截图）
+  const [debugMode, setDebugMode] = useState<boolean>(false);
+  const [lastTransposeDebug, setLastTransposeDebug] = useState<any>(null);
+
   // 自动识别进度（方法2）
   const [autoRecognizeProgress, setAutoRecognizeProgress] = useState<number>(0);
 
@@ -366,6 +370,12 @@ export default function TransposePage() {
   const [manualLinePositions, setManualLinePositions] = useState<number[]>([]); // 存储每行和弦的纵坐标（百分比）
   const [draggingLineIndex, setDraggingLineIndex] = useState<number | null>(null);
   // 自动识别重试次数（用于显示不同的提示文字）
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    setDebugMode(params.get('debug') === '1');
+  }, []);
   const [autoRecognizeRetryCount, setAutoRecognizeRetryCount] = useState<number>(0);
   const [manualLongPressedIndex, setManualLongPressedIndex] = useState<number | null>(null); // 手动定位的长按状态
   const [isConfirmingManualRelocate, setIsConfirmingManualRelocate] = useState<boolean>(false); // 手动定位确认状态
@@ -1663,6 +1673,24 @@ export default function TransposePage() {
       const tFetch2 = performance.now();
 
       const contentLength = apiResponse.headers.get('content-length');
+
+      const transposeTimings = {
+        headersMs: Math.round(tFetch1 - tFetch0),
+        bodyJsonMs: Math.round(tFetch2 - tFetch1),
+        totalMs: Math.round(tFetch2 - tFetch0),
+        contentLength,
+      };
+
+      if (debugMode) {
+        setLastTransposeDebug({
+          timings: transposeTimings,
+          debug: data?.debug,
+          ok: apiResponse.ok,
+          status: apiResponse.status,
+          error: data?.error,
+        });
+      }
+
       console.log('✅ 转调API返回数据:', {
         ok: apiResponse.ok,
         status: apiResponse.status,
@@ -1673,12 +1701,7 @@ export default function TransposePage() {
         originalKey: data.originalKey,
         targetKey: data.targetKey,
         debug: data.debug,
-        timings: {
-          headersMs: Math.round(tFetch1 - tFetch0),
-          bodyJsonMs: Math.round(tFetch2 - tFetch1),
-          totalMs: Math.round(tFetch2 - tFetch0),
-          contentLength,
-        },
+        timings: transposeTimings,
       });
 
       if (!apiResponse.ok) {
@@ -2485,6 +2508,20 @@ export default function TransposePage() {
 return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
       <div className="max-w-6xl mx-auto">
+        {debugMode && (
+          <div className="fixed bottom-3 left-3 right-3 md:left-auto md:right-3 md:w-[460px] z-50">
+            <div className="rounded-lg border border-gray-200/70 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 p-3 text-xs text-gray-800 dark:text-gray-100 shadow">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold">Debug</div>
+                <div className="text-gray-500 dark:text-gray-400">debug=1</div>
+              </div>
+              <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words">
+                {JSON.stringify(lastTransposeDebug ?? { note: 'No transpose request yet' }, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+
         {/* 标题 - 在自动识别界面和手动调整界面隐藏 */}
         {pageState !== 'auto_recognizing' && pageState !== 'locating_first' && pageState !== 'locating_last' && pageState !== 'manual_relocating' && (
           <div className="text-center mb-4">
