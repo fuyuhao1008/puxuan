@@ -666,7 +666,7 @@ function selectFallbackModel(excludedModel: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  await ensureFontsReady();
+  const fontsReady = ensureFontsReady();
   try {
     const totalStart = Date.now();
     const formData = await request.formData();
@@ -1122,6 +1122,7 @@ export async function POST(request: NextRequest) {
     }
 
     const tAnnotateStart = Date.now();
+    await fontsReady;
     // 生成标注后的图片（使用canvas）
     const annotateResult = await annotateImage(
       originalImageBuffer,

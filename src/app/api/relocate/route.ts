@@ -405,7 +405,7 @@ function mergeResults(
 
 // ========== API 路由处理 ==========
 export async function POST(request: NextRequest) {
-  await ensureFontsReady();
+  const fontsReady = ensureFontsReady();
   try {
     const formData = await request.formData();
     const imageFile = formData.get('image') as File;
@@ -766,6 +766,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 生成标注后的图片（使用canvas）
+    await fontsReady;
     const { resultImage } = await annotateImage(
       imageBuffer,
       transposeResult,
