@@ -1641,6 +1641,11 @@ async function callModelForRecognition(
 
   console.log(`🤖 调用方舟模型: ${modelName} (thinking: ${enableThinking ? 'enabled' : 'disabled'})`);
   const tStart = Date.now();
+
+  const recognitionMaxTokensRaw = Number.parseInt(process.env.ARK_MAX_TOKENS_RECOGNITION ?? '2048', 10);
+  const recognitionMaxTokens = Number.isFinite(recognitionMaxTokensRaw)
+    ? Math.min(4096, Math.max(256, recognitionMaxTokensRaw))
+    : 2048;
   
   // 调用之前写的 ark-client 函数
   let content: string;
@@ -1669,7 +1674,7 @@ async function callModelForRecognition(
       try {
         detailed = await callArkChatDetailed(messages, modelName, arkConfig, {
           temperature: 0.1,
-          maxTokens: 4096,
+          maxTokens: recognitionMaxTokens,
           thinking: enableThinking,
           timeoutMs,
           signal,
@@ -1804,7 +1809,11 @@ async function recognizeChordsFromImage(
 ): Promise<any> {
   try {
     const isFastMode = modelMode === 'fast';
-    const imageDetail: 'high' = 'high';
+    const detailOverride = (process.env.ARK_IMAGE_DETAIL ?? '').toLowerCase();
+    const imageDetail: 'low' | 'high' | 'auto' =
+      detailOverride === 'low' || detailOverride === 'high' || detailOverride === 'auto'
+        ? (detailOverride as any)
+        : (isFastMode ? 'low' : 'high');
     
     console.log('='.repeat(60));
     console.log(`🎯 和弦识别任务启动 (${isFastMode ? '快速模式' : '精准模式'})`);

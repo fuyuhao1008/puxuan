@@ -238,6 +238,15 @@ VISION_ASSIST_STRATEGY=window  # window | full
 VISION_ASSIST_TIMEOUT_MS=30000
 VISION_ASSIST_POST_LITE_WAIT_MS=8000
 
+# 识别性能调优（可选）
+# - ARK_IMAGE_DETAIL: 传给 image_url.detail，可选 low | high | auto
+#   默认：fast 模式用 low，accurate 用 high
+ARK_IMAGE_DETAIL=low
+# - ARK_MAX_TOKENS_RECOGNITION: 识别请求 max_tokens（默认 2048，范围 256-4096）
+ARK_MAX_TOKENS_RECOGNITION=2048
+# - LITE_MODEL_TIMEOUT_MS: fast 模式 Lite 主路径超时上限（默认 60000ms）
+LITE_MODEL_TIMEOUT_MS=60000
+
 # 服务端绘制字体（解决 Linux/Vercel 缺系统字体导致文字不显示）
 # 推荐：把字体文件放到 public/fonts/，并用 CHORD_FONT_FILE 指定它
 CHORD_FONT_FILE=fonts/YourFont.ttf
