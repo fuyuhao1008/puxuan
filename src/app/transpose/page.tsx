@@ -2676,7 +2676,7 @@ return (
                   {autoRecognizeRetryCount > 0 
                     ? '识别失败，重新识别中...' 
                     : (autoRecognizeProgress < 100 
-                        ? (modelMode === 'fast' ? '正在识别中，请耐心等待' : '精准识别中~')
+                        ? (modelMode === 'fast' ? '正在识别中~' : '精准识别中~')
                         : '识别完成！')}
                 </p>
               </div>
