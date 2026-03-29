@@ -9,6 +9,10 @@ import fs from 'fs';
 
 export const runtime = 'nodejs';
 
+// Prefer a region with better connectivity to Ark CN endpoint.
+// Note: Actual region support depends on your Vercel plan and project settings.
+export const preferredRegion = ['hkg1'];
+
 const DEFAULT_CHORD_FONT_FAMILY = '"DejaVu Serif", "Times New Roman", Times, serif';
 
 // 和弦/调号绘制字体（服务端 canvas）。
@@ -1641,13 +1645,51 @@ async function callModelForRecognition(
   // 调用之前写的 ark-client 函数
   let content: string;
   try {
-    const detailed = await callArkChatDetailed(messages, modelName, arkConfig, {
-      temperature: 0.1,
-      maxTokens: 4096,
-      thinking: enableThinking,
-      timeoutMs,
-      signal,
-    });
+    const isConnectTimeoutError = (err: any): boolean => {
+      const code = err?.cause?.code || err?.code;
+      if (code === 'UND_ERR_CONNECT_TIMEOUT') return true;
+      // Node fetch sometimes wraps Undici errors under TypeError('fetch failed')
+      const msg = typeof err?.message === 'string' ? err.message : '';
+      const causeMsg = typeof err?.cause?.message === 'string' ? err.cause.message : '';
+      return msg.includes('fetch failed') && (causeMsg.toLowerCase().includes('connect timeout') || causeMsg.toLowerCase().includes('timeout'));
+    };
+
+    const connectRetryAttemptsRaw = Number.parseInt(process.env.ARK_CONNECT_RETRY_ATTEMPTS ?? '2', 10);
+    const connectRetryAttempts = Number.isFinite(connectRetryAttemptsRaw) ? Math.min(5, Math.max(1, connectRetryAttemptsRaw)) : 2;
+    const connectRetryBackoffMsRaw = Number.parseInt(process.env.ARK_CONNECT_RETRY_BACKOFF_MS ?? '500', 10);
+    const connectRetryBackoffMs = Number.isFinite(connectRetryBackoffMsRaw) ? Math.min(5000, Math.max(0, connectRetryBackoffMsRaw)) : 500;
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    let detailed:
+      | Awaited<ReturnType<typeof callArkChatDetailed>>
+      | null = null;
+
+    for (let attempt = 1; attempt <= connectRetryAttempts; attempt++) {
+      try {
+        detailed = await callArkChatDetailed(messages, modelName, arkConfig, {
+          temperature: 0.1,
+          maxTokens: 4096,
+          thinking: enableThinking,
+          timeoutMs,
+          signal,
+        });
+        break;
+      } catch (err: any) {
+        const elapsed = Date.now() - tStart;
+        const canRetry = isConnectTimeoutError(err) && attempt < connectRetryAttempts && !(signal?.aborted);
+        if (!canRetry) throw err;
+        console.warn(
+          `🔁 Ark 连接超时，准备重试: model=${modelName}, attempt=${attempt}/${connectRetryAttempts}, elapsed=${elapsed}ms, backoff=${connectRetryBackoffMs}ms`
+        );
+        if (connectRetryBackoffMs > 0) await sleep(connectRetryBackoffMs);
+      }
+    }
+
+    if (!detailed) {
+      throw new Error('Ark 调用失败：重试后仍未获得响应');
+    }
+
     content = detailed.content;
 
     if (detailed.usage) {
@@ -1897,13 +1939,16 @@ async function recognizeChordsFromImage(
       try {
         const tModelStart = Date.now();
 
-        const litePromise = callModelForRecognition(messages, MODEL_LITE, false)
+        const liteTimeoutMsRaw = Number.parseInt(process.env.LITE_MODEL_TIMEOUT_MS ?? '60000', 10);
+        const liteTimeoutMs = Number.isFinite(liteTimeoutMsRaw) ? Math.min(180000, Math.max(5000, liteTimeoutMsRaw)) : 60000;
+
+        const litePromise = callModelForRecognition(messages, MODEL_LITE, false, liteTimeoutMs)
           .catch(async (err) => {
             // Lite 被 Safe Experience Mode/推理额度限制暂停时，自动切换到备用模型（通常是 Vision）
             if (err instanceof ArkApiError && err.status === 429 && (err.code === 'SetLimitExceeded' || err.type === 'TooManyRequests')) {
               const fallback = selectFallbackModel(MODEL_LITE);
               console.warn(`⚠️ Lite 模型不可用(429 ${err.code ?? ''})，切换备用模型: ${fallback}`);
-              return await callModelForRecognition(messages, fallback, false);
+              return await callModelForRecognition(messages, fallback, false, liteTimeoutMs);
             }
             throw err;
           });
