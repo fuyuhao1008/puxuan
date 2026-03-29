@@ -1566,6 +1566,13 @@ function parseModelResponse(content: string): { key: string | null; centers: Par
     // 正确格式应该是 [["D", "F"], 788, 444] 表示该位置可能是 D 或 F
     fixedJson = fixedJson.replace(/\[\[\"([^\"]+)\"\]\s*,\s*\"([^\"]+)\"\]\s*,\s*(\d+)\s*,\s*(\d+)\s*\],?/g, '[[\"$1\", \"$2\"], $3, $4]');
 
+    // 修复模型返回的错误格式：["/C#"], 422, 826] → [["/C#"], 422, 826]
+    // 该错误会导致 JSON 结构不合法（少了一个 [ 使 centers 元素不再是三元组数组）
+    fixedJson = fixedJson.replace(
+      /(?<!\[)\[\s*\"([^\"]+)\"\s*\]\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\]/g,
+      '[["$1"], $2, $3]'
+    );
+
     const firstBrace2 = fixedJson.indexOf('{');
     const lastBrace2 = fixedJson.lastIndexOf('}');
     const firstBracket = fixedJson.indexOf('[');
