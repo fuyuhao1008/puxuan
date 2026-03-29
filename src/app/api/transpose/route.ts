@@ -797,46 +797,56 @@ export async function POST(request: NextRequest) {
     const originalWidth = originalImage.width || 800;
     const originalHeight = originalImage.height || 1000;
 
-    // 智能放大低分辨率图片（用于AI识别）
-    const aiImage = await upscaleImageIfNeeded(originalImageBuffer, imageFile.type);
-    const imgWidth = aiImage.width;
-    const imgHeight = aiImage.height;
-
-    // 将图片转换为 base64
-    const imageBase64 = `data:${aiImage.mimeType};base64,${aiImage.buffer.toString('base64')}`;
-
-    console.log(
-      `🖼️ AI输入图: inputType=${imageFile.type || 'unknown'} originalBytes=${originalImageBuffer.length} aiBytes=${aiImage.buffer.length} dataUrlChars=${imageBase64.length} upscaled=${aiImage.wasUpscaled}`
-    );
-
-    console.log(`⏱️ 图片预处理耗时: ${Date.now() - tProcessStart}ms (load + maybe upscale + base64)`);
+    // 推导 AI 识别时使用的目标尺寸（不做实际重编码/放大）
+    // 说明：如果本次请求能复用 centers，就不需要生成 AI 输入图（这是最耗时的部分）
+    const aiDims = computeAiTargetDimensions(originalWidth, originalHeight);
+    let imgWidth: number = aiDims.width;
+    let imgHeight: number = aiDims.height;
+    let wasUpscaled: boolean = aiDims.wasUpscaled;
 
     // 识别和弦：如果前端传递了预存数据，直接使用；否则调用大模型
     // 注意：只要 centers 数据存在，就使用它，不因为 key 为空而重新识别
     // key 为空只说明 AI 没识别出原调，用户可以手动选择
-    let recognitionResult: any;
+    let recognitionResult: any = null;
     if (chordsDataStr) {
       try {
-        recognitionResult = JSON.parse(chordsDataStr);
-
-        // 验证预存数据的完整性：只检查 centers，不检查 key
-        // key 为空时用户可以手动选择原调，不需要重新识别
-        if (!recognitionResult.centers || recognitionResult.centers.length === 0) {
-          console.log('⚠️ 预存数据中没有 centers，需要重新识别');
-          recognitionResult = await recognizeChordsFromImage(imageBase64, imageFile.type, imgWidth, imgHeight, modelMode || 'accurate');
-        } else {
+        const parsed = JSON.parse(chordsDataStr);
+        if (parsed?.centers && Array.isArray(parsed.centers) && parsed.centers.length > 0) {
+          recognitionResult = parsed;
           console.log(`✅ 使用预存的 centers 数据 (${recognitionResult.centers.length} 个和弦)`);
           if (!recognitionResult.key) {
             console.log('ℹ️ 预存数据中没有 key，用户将手动选择原调');
           }
+        } else {
+          console.log('⚠️ 预存数据中没有 centers，需要重新识别');
         }
       } catch (error) {
         console.log('⚠️ 解析预存数据失败，需要重新识别');
-        recognitionResult = await recognizeChordsFromImage(imageBase64, imageFile.type, imgWidth, imgHeight, modelMode || 'accurate');
       }
     } else {
       console.log('ℹ️ 没有预存数据，需要调用 AI 识别');
+    }
+
+    if (!recognitionResult) {
+      const aiImage = await upscaleImageIfNeeded(originalImageBuffer, imageFile.type);
+      imgWidth = aiImage.width;
+      imgHeight = aiImage.height;
+      wasUpscaled = aiImage.wasUpscaled;
+
+      const imageBase64 = `data:${aiImage.mimeType};base64,${aiImage.buffer.toString('base64')}`;
+
+      console.log(
+        `🖼️ AI输入图: inputType=${imageFile.type || 'unknown'} originalBytes=${originalImageBuffer.length} aiBytes=${aiImage.buffer.length} dataUrlChars=${imageBase64.length} upscaled=${aiImage.wasUpscaled}`
+      );
+
+      console.log(`⏱️ 图片预处理耗时: ${Date.now() - tProcessStart}ms (load + maybe upscale + base64)`);
+
       recognitionResult = await recognizeChordsFromImage(imageBase64, imageFile.type, imgWidth, imgHeight, modelMode || 'accurate');
+    } else {
+      if (wasUpscaled) {
+        console.log(`✅ 复用 centers：推导AI尺寸 ${imgWidth}x${imgHeight}（原始: ${originalWidth}x${originalHeight}）`);
+      }
+      console.log(`⏱️ 图片预处理耗时: ${Date.now() - tProcessStart}ms (load only; reuse centers)`);
     }
 
     if (!recognitionResult) {
@@ -868,7 +878,7 @@ export async function POST(request: NextRequest) {
     // 计算缩放比例（如果图片被放大了）
     const scaleX = originalWidth / imgWidth;
     const scaleY = originalHeight / imgHeight;
-    const wasUpscaled = aiImage.wasUpscaled;
+    // 注意：wasUpscaled 仅用于日志/调试，不影响坐标缩放逻辑
 
     // 确定原调（需要用于OCR修正）
     let originalKey = originalKeyInput;
@@ -1210,6 +1220,36 @@ function expandBBox(
     x2: Math.max(0, Math.min(imgWidth, Math.round(cx + textWidth / 2 + padding))),
     y2: Math.max(0, Math.min(imgHeight, Math.round(cy + charHeight / 2 + padding))),
   };
+}
+
+function computeAiTargetDimensions(
+  originalWidth: number,
+  originalHeight: number
+): { width: number; height: number; wasUpscaled: boolean } {
+  const MIN_SIZE = 1000;
+
+  const shouldUpscale = originalWidth < MIN_SIZE || originalHeight < MIN_SIZE;
+
+  let targetWidth = originalWidth;
+  let targetHeight = originalHeight;
+
+  if (shouldUpscale && originalWidth < MIN_SIZE && originalHeight < MIN_SIZE) {
+    if (originalWidth < originalHeight) {
+      targetWidth = MIN_SIZE;
+      targetHeight = Math.round((MIN_SIZE / originalWidth) * originalHeight);
+    } else {
+      targetHeight = MIN_SIZE;
+      targetWidth = Math.round((MIN_SIZE / originalHeight) * originalWidth);
+    }
+  } else if (shouldUpscale && originalWidth < MIN_SIZE) {
+    targetWidth = MIN_SIZE;
+    targetHeight = Math.round((MIN_SIZE / originalWidth) * originalHeight);
+  } else if (shouldUpscale) {
+    targetHeight = MIN_SIZE;
+    targetWidth = Math.round((MIN_SIZE / originalHeight) * originalWidth);
+  }
+
+  return { width: targetWidth, height: targetHeight, wasUpscaled: shouldUpscale };
 }
 
 /**
