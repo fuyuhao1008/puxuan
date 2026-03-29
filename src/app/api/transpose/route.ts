@@ -400,9 +400,14 @@ function correctModelResult(
     const [chords, cx, cy] = center;
     // 对每个和弦文本进行修正
     const correctedChords = chords.map(chord => {
-      const corrected = chordTransposer.correctChordByKey(chord, originalKey, isFastMode);
-      if (corrected !== chord) {
-        console.log(`  🔧 合并前修正(${modelResult.modelUsed || '模型'}): ${chord} → ${corrected}`);
+      const normalized = normalizeChordTokenForOcr(chord);
+      if (normalized !== chord) {
+        console.log(`  🧼 归一化(${modelResult.modelUsed || '模型'}): ${chord} → ${normalized}`);
+      }
+
+      const corrected = chordTransposer.correctChordByKey(normalized, originalKey, isFastMode);
+      if (corrected !== normalized) {
+        console.log(`  🔧 合并前修正(${modelResult.modelUsed || '模型'}): ${normalized} → ${corrected}`);
       }
       return corrected;
     });
@@ -810,8 +815,8 @@ export async function POST(request: NextRequest) {
         // 处理 chords 数组中的每个和弦
         const correctedChords = center.chords?.map((chord: any) => {
           const chordText = typeof chord === 'string' ? chord : chord?.text || '';
-          // 先规范化升降号
-          let normalized = normalizeAccidentals(chordText);
+          // 先做通用归一化（升降号/空白/重复低音等）
+          let normalized = normalizeChordTokenForOcr(chordText);
           // 如果识别出了原调，应用和弦修正（如 C/D 调的 B→D 转换）
           if (detectedKey && isFastMode) {
             const corrected = chordTransposer.correctChordByKey(normalized, detectedKey, true);
@@ -824,7 +829,7 @@ export async function POST(request: NextRequest) {
         }) || [];
         
         // 处理 text 字段
-        let correctedText = normalizeAccidentals(center.text);
+        let correctedText = normalizeChordTokenForOcr(center.text);
         if (detectedKey && isFastMode) {
           const corrected = chordTransposer.correctChordByKey(correctedText, detectedKey, true);
           if (corrected !== correctedText) {
@@ -1469,6 +1474,15 @@ async function upscaleImageIfNeeded(
 /**
  * 解析模型返回的 JSON 内容
  */
+function normalizeChordTokenForOcr(input: string): string {
+  let s = normalizeAccidentals(String(input ?? '').trim());
+  // OCR/model output sometimes contains whitespace inside tokens; chords should be compact.
+  s = s.replace(/\s+/g, '');
+  // Fix duplicated bass note like "Gm7/CC" -> "Gm7/C".
+  s = s.replace(/\/([A-G])\1\b/g, '/$1');
+  return s;
+}
+
 function parseModelResponse(content: string): { key: string | null; centers: ParsedModelCenter[] } {
   let jsonStr = content.trim();
 
@@ -1584,10 +1598,10 @@ function parseModelResponse(content: string): { key: string | null; centers: Par
       if (Array.isArray(center) && center.length === 3) {
         const textOrArr = center[0];
         const rawChords = Array.isArray(textOrArr)
-          ? textOrArr.map((c: any) => String(c).trim()).filter(Boolean)
+          ? textOrArr.map((c: any) => normalizeChordTokenForOcr(String(c))).filter(Boolean)
           : String(textOrArr)
               .split('或')
-              .map((s) => s.trim())
+              .map((s) => normalizeChordTokenForOcr(s))
               .filter(Boolean);
 
         const cx = Number(center[1]);
@@ -1600,10 +1614,10 @@ function parseModelResponse(content: string): { key: string | null; centers: Par
       if (center && typeof center === 'object') {
         const rawText = typeof center.text === 'string' ? center.text.trim() : '';
         const rawChords = Array.isArray(center.chords)
-          ? center.chords.map((c: any) => String(c).trim()).filter(Boolean)
+          ? center.chords.map((c: any) => normalizeChordTokenForOcr(String(c))).filter(Boolean)
           : rawText
               .split('或')
-              .map((s: string) => s.trim())
+              .map((s: string) => normalizeChordTokenForOcr(s))
               .filter(Boolean);
 
         const cx = Number(center.cx);
