@@ -1666,14 +1666,16 @@ export default function TransposePage() {
         hasResultImage: !!data.resultImage,
         chordsCount: data.chords?.length,
         originalKey: data.originalKey,
-        targetKey: data.targetKey
+        targetKey: data.targetKey,
+        debug: data.debug,
       });
 
       if (!apiResponse.ok) {
         console.error('❌ 转调API返回错误:', {
           status: apiResponse.status,
           statusText: apiResponse.statusText,
-          errorData: data
+          errorData: data,
+          debug: data?.debug,
         });
         alert(`转调失败: ${data.error || '未知错误'}`);
         setPageState('settings');

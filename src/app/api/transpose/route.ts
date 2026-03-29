@@ -678,11 +678,21 @@ export async function POST(request: NextRequest) {
     const directionStr = formData.get('direction') as string;
     const semitonesStr = formData.get('semitones') as string;
     const onlyRecognizeKey = formData.get('onlyRecognizeKey') as string;
-    const chordsDataStr = formData.get('chordsData') as string; // 前端传递的预存和弦数据
+    const chordsDataValue = formData.get('chordsData');
+    const chordsDataStr = typeof chordsDataValue === 'string' ? chordsDataValue : null; // 前端传递的预存和弦数据
     const chordColor = (formData.get('chordColor') as string) || '#2563EB'; // 默认蓝色
     const fontSizeStr = formData.get('fontSize') as string; // 字体大小参数
     const modelMode = formData.get('modelMode') as string; // 模型模式：'fast' | 'accurate'
     const isFastMode = modelMode === 'fast'; // 快速模式标志（用于和弦修正逻辑）
+
+    const traceId = Math.random().toString(16).slice(2, 10);
+    let didReuseCenters = false;
+    let didCallAi = false;
+    let chordsDataParseError: string | null = null;
+
+    console.log(
+      `➡️ /api/transpose start trace=${traceId} onlyRecognizeKey=${onlyRecognizeKey === 'true'} targetKey=${targetKey || ''} hasChordsData=${!!chordsDataStr} chordsDataChars=${chordsDataStr ? chordsDataStr.length : 0} modelMode=${modelMode || ''}`
+    );
 
     if (!imageFile) {
       return NextResponse.json({ error: '请上传图片' }, { status: 400 });
@@ -813,6 +823,7 @@ export async function POST(request: NextRequest) {
         const parsed = JSON.parse(chordsDataStr);
         if (parsed?.centers && Array.isArray(parsed.centers) && parsed.centers.length > 0) {
           recognitionResult = parsed;
+          didReuseCenters = true;
           console.log(`✅ 使用预存的 centers 数据 (${recognitionResult.centers.length} 个和弦)`);
           if (!recognitionResult.key) {
             console.log('ℹ️ 预存数据中没有 key，用户将手动选择原调');
@@ -821,6 +832,7 @@ export async function POST(request: NextRequest) {
           console.log('⚠️ 预存数据中没有 centers，需要重新识别');
         }
       } catch (error) {
+        chordsDataParseError = error instanceof Error ? error.message : String(error);
         console.log('⚠️ 解析预存数据失败，需要重新识别');
       }
     } else {
@@ -828,6 +840,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!recognitionResult) {
+      didCallAi = true;
       const aiImage = await upscaleImageIfNeeded(originalImageBuffer, imageFile.type);
       imgWidth = aiImage.width;
       imgHeight = aiImage.height;
@@ -1159,6 +1172,15 @@ export async function POST(request: NextRequest) {
       })),
       resultImage: annotateResult.resultImage, // 使用返回的resultImage
       recognition: recognitionResult,
+      debug: {
+        traceId,
+        didReuseCenters,
+        didCallAi,
+        chordsDataProvided: !!chordsDataStr,
+        chordsDataChars: chordsDataStr ? chordsDataStr.length : 0,
+        chordsDataParseError,
+        modelMode: modelMode || 'accurate',
+      },
     });
     console.log(`⏱️ /api/transpose total: ${Date.now() - totalStart}ms`);
     return response;
