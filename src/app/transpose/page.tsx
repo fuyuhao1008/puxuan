@@ -227,40 +227,15 @@ const WAITING_IMAGES = [
   '/ai-waiting/img-6.png',
 ];
 
-// 预加载图片的全局变量
-let preloadedFirstImage = false;
-let firstImageUrl: string | null = null;
-
-// 预加载第一张图片（在模块加载时执行）
-if (typeof window !== 'undefined') {
-  const randomIndex = Math.floor(Math.random() * WAITING_IMAGES.length);
-  const img = new window.Image();
-  img.src = WAITING_IMAGES[randomIndex];
-  firstImageUrl = WAITING_IMAGES[randomIndex];
-  img.onload = () => {
-    preloadedFirstImage = true;
-  };
-}
-
 function WaitingImageSlideshow() {
-  // 当前图片和下一张图片（用于交叉淡入淡出）
-  const [currentImage, setCurrentImage] = useState(() => {
-    if (firstImageUrl) return firstImageUrl;
+  // 每次进入等待界面，只随机展示一张图（不轮播）
+  const [currentImage] = useState(() => {
     return WAITING_IMAGES[Math.floor(Math.random() * WAITING_IMAGES.length)];
   });
-  const [nextImage, setNextImage] = useState<string | null>(null);
-  
-  // 独立控制两张图片的透明度
-  const [currentOpacity, setCurrentOpacity] = useState(1);
-  const [nextOpacity, setNextOpacity] = useState(0);
-  
-  // 图片加载状态
-  const [imageLoaded, setImageLoaded] = useState(preloadedFirstImage);
-  const [showUploadSuccess, setShowUploadSuccess] = useState(!preloadedFirstImage);
-  
-  // 使用 ref 追踪状态
-  const currentImageRef = useRef(currentImage);
-  const isTransitioningRef = useRef(false);
+
+  // 图片加载状态（用于“图片上传成功”过渡提示）
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [showUploadSuccess, setShowUploadSuccess] = useState(true);
 
   // 图片加载完成后，延迟隐藏上传成功提示
   useEffect(() => {
@@ -271,56 +246,6 @@ function WaitingImageSlideshow() {
       return () => clearTimeout(timer);
     }
   }, [imageLoaded, showUploadSuccess]);
-
-  // 定时切换图片 - 真正的交叉淡入淡出
-  useEffect(() => {
-    const displayTime = 8000;  // 每张图片显示时间
-    const fadeDuration = 1500; // 淡入淡出时间 1.5 秒
-  
-    const timer = setInterval(() => {
-      // 如果正在过渡中，跳过
-      if (isTransitioningRef.current) return;
-      
-      // 选择新的随机图片
-      let newImage;
-      do {
-        newImage = WAITING_IMAGES[Math.floor(Math.random() * WAITING_IMAGES.length)];
-      } while (newImage === currentImageRef.current && WAITING_IMAGES.length > 1);
-      
-      // 开始过渡：设置下一张图片，重置透明度
-      isTransitioningRef.current = true;
-      setNextOpacity(0);
-      setNextImage(newImage);
-    }, displayTime);
-  
-    return () => clearInterval(timer);
-  }, []); // 空依赖数组，只在挂载时创建一次
-
-  // 当下一张图片加载完成时，开始交叉淡入淡出
-  useEffect(() => {
-    if (nextImage && nextOpacity === 0) {
-      // 图片已加载，开始淡入
-      const fadeDuration = 1500;
-      
-      // 触发交叉淡入淡出
-      requestAnimationFrame(() => {
-        setNextOpacity(1);
-        setCurrentOpacity(0);
-      });
-      
-      // 过渡完成后切换图片
-      const timer = setTimeout(() => {
-        currentImageRef.current = nextImage;
-        setCurrentImage(nextImage);
-        setNextImage(null);
-        setCurrentOpacity(1);
-        setNextOpacity(0);
-        isTransitioningRef.current = false;
-      }, fadeDuration);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [nextImage, nextOpacity]);
 
   return (
     <div 
@@ -351,25 +276,8 @@ function WaitingImageSlideshow() {
         src={currentImage}
         alt="等待中"
         className="w-full h-full object-cover"
-        style={{ 
-          opacity: currentOpacity,
-          transition: 'opacity 1.5s ease-in-out',
-        }}
         onLoad={() => setImageLoaded(true)}
       />
-      
-      {/* 下一张图片 - 绝对定位覆盖 */}
-      {nextImage && (
-        <img
-          src={nextImage}
-          alt="等待中"
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ 
-            opacity: nextOpacity,
-            transition: 'opacity 1.5s ease-in-out',
-          }}
-        />
-      )}
     </div>
   );
 }
