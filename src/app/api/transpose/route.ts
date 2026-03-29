@@ -41,14 +41,24 @@ async function resolvePublicFileToLocalPath(publicRelPath: string): Promise<stri
     if (p && fs.existsSync(p)) return p;
   }
 
+  // Serverless 平台上，public 静态文件不一定能直接从函数文件系统读取。
+  // 这里支持：
+  // - Vercel: VERCEL_URL (不含协议)
+  // - Netlify: URL / DEPLOY_PRIME_URL (通常含协议)
   const vercelUrl = process.env.VERCEL_URL;
-  if (!vercelUrl) return null;
+  const netlifyUrl = process.env.URL || process.env.DEPLOY_PRIME_URL;
 
-  const url = `https://${vercelUrl}/${normalized}`;
+  let baseUrl: string | null = null;
+  if (vercelUrl) baseUrl = `https://${vercelUrl}`;
+  else if (netlifyUrl) baseUrl = netlifyUrl;
+  if (!baseUrl) return null;
+
+  const base = baseUrl.replace(/\/$/, '');
+  const url = `${base}/${normalized}`;
   try {
     const res = await fetch(url);
     if (!res.ok) {
-      console.warn('⚠️ 无法从 Vercel 静态资源拉取字体:', url, 'status=', res.status);
+      console.warn('⚠️ 无法从站点静态资源拉取字体:', url, 'status=', res.status);
       return null;
     }
     const buf = Buffer.from(await res.arrayBuffer());
