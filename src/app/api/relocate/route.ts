@@ -3,79 +3,96 @@ import { chordTransposer, normalizeNoteToSharp, Chord, TransposeResult, isKeyFla
 import { createHash } from 'crypto';
 import { callArkChatDetailed, ArkApiError } from '@/lib/ark-client';
 import { registerFont, createCanvas, loadImage } from '@napi-rs/canvas/node-canvas';
+import os from 'os';
 import path from 'path';
 import fs from 'fs';
 
 export const runtime = 'nodejs';
 
-// 注册中文字体（用于显示"或"字）
-// 使用子集化字体，只包含"或"字，文件仅约 2KB
-function getFontPath(): string | null {
-  // 尝试多个可能的路径，确保开发和生产环境都能找到字体
-  const possiblePaths = [
-    // 标准路径（开发环境和大多数生产环境）
-    path.join(process.cwd(), 'public', 'fonts', 'or-font.ttf'),
-    // 相对于当前文件的路径
-    path.join(__dirname, '..', '..', '..', '..', 'public', 'fonts', 'or-font.ttf'),
+const DEFAULT_CHORD_FONT_FAMILY = '"DejaVu Serif", "Times New Roman", Times, serif';
+
+let CHORD_FONT_FAMILY = process.env.CHORD_FONT_FAMILY || DEFAULT_CHORD_FONT_FAMILY;
+let ARROW_FONT_FAMILY = process.env.ARROW_FONT_FAMILY || `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
+
+let fontsReadyPromise: Promise<void> | null = null;
+
+function normalizePublicRelPath(input: string): string {
+  return String(input ?? '').trim().replace(/^[/\\]+/, '').replace(/\\/g, '/');
+}
+
+async function resolvePublicFileToLocalPath(publicRelPath: string): Promise<string | null> {
+  const normalized = normalizePublicRelPath(publicRelPath);
+  if (!normalized) return null;
+
+  const candidates = [
+    path.join(process.cwd(), 'public', normalized),
+    path.join(__dirname, '..', '..', '..', '..', 'public', normalized),
   ];
 
-  for (const p of possiblePaths) {
-    if (p && fs.existsSync(p)) {
-      return p;
-    }
+  for (const p of candidates) {
+    if (p && fs.existsSync(p)) return p;
   }
-  return null;
-}
 
-const fontPath = getFontPath();
-if (fontPath) {
+  const vercelUrl = process.env.VERCEL_URL;
+  if (!vercelUrl) return null;
+
+  const url = `https://${vercelUrl}/${normalized}`;
   try {
-    registerFont(fontPath, { family: 'OrFont' });
-    console.log('✅ 中文字体已注册: OrFont, 路径:', fontPath);
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn('⚠️ 无法从 Vercel 静态资源拉取字体:', url, 'status=', res.status);
+      return null;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    const tmpPath = path.join(os.tmpdir(), `public-${path.basename(normalized)}`);
+    await fs.promises.writeFile(tmpPath, buf);
+    return tmpPath;
   } catch (error) {
-    console.warn('⚠️ 中文字体注册失败:', error);
+    console.warn('⚠️ 拉取字体失败:', url, error);
+    return null;
   }
-} else {
-  console.warn('⚠️ 中文字体文件未找到，"或"字可能显示异常');
 }
 
-// 可选：注册服务端绘制用的和弦字体（TTF/OTF）。
-// 用法：把字体文件放到 public/fonts/，并配置环境变量：
-// CHORD_FONT_FILE=fonts/YourFont.ttf
-let chordFontRegisteredFamily: string | null = null;
-try {
-  const chordFontFile = process.env.CHORD_FONT_FILE;
-  if (chordFontFile) {
-    const normalized = chordFontFile.replace(/^[/\\]+/, '').replace(/\\/g, '/');
-    const chordFontPath = path.join(process.cwd(), 'public', normalized);
-    if (fs.existsSync(chordFontPath)) {
-      registerFont(chordFontPath, { family: 'ChordFont' });
-      chordFontRegisteredFamily = '"ChordFont"';
-      console.log('✅ 和弦字体已注册: ChordFont, 路径:', chordFontPath);
+async function ensureFontsReady(): Promise<void> {
+  if (fontsReadyPromise) return fontsReadyPromise;
+  fontsReadyPromise = (async () => {
+    const orFontPath = await resolvePublicFileToLocalPath('fonts/or-font.ttf');
+    if (orFontPath) {
+      try {
+        registerFont(orFontPath, { family: 'OrFont' });
+        console.log('✅ 中文字体已注册: OrFont, 路径:', orFontPath);
+      } catch (error) {
+        console.warn('⚠️ 中文字体注册失败:', error);
+      }
     } else {
-      console.warn('⚠️ CHORD_FONT_FILE 指向的字体文件未找到:', chordFontPath);
+      console.warn('⚠️ 中文字体文件未找到，"或"字可能显示异常');
     }
-  }
-} catch (error) {
-  console.warn('⚠️ 和弦字体注册失败，将使用系统默认字体:', error);
+
+    const chordFontFile = process.env.CHORD_FONT_FILE;
+    if (chordFontFile) {
+      const chordFontPath = await resolvePublicFileToLocalPath(chordFontFile);
+      if (chordFontPath) {
+        try {
+          registerFont(chordFontPath, { family: 'ChordFont' });
+          console.log('✅ 和弦字体已注册: ChordFont, 路径:', chordFontPath);
+          CHORD_FONT_FAMILY = `"ChordFont", ${process.env.CHORD_FONT_FAMILY || DEFAULT_CHORD_FONT_FAMILY}`;
+          ARROW_FONT_FAMILY = process.env.ARROW_FONT_FAMILY || `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
+        } catch (error) {
+          console.warn('⚠️ 和弦字体注册失败，将使用系统默认字体:', error);
+        }
+      } else {
+        console.warn('⚠️ CHORD_FONT_FILE 对应的字体无法解析为本地路径:', chordFontFile);
+      }
+    }
+  })();
+  return fontsReadyPromise;
 }
 
 // 重新识别的模型配置（与第一次识别相同，使用快速模式）
 const MODEL_LITE = process.env.VISION_MODEL_LITE || 'doubao-seed-2-0-lite-260215';
 const MODEL_VISION = process.env.VISION_MODEL_VISION || 'doubao-seed-1-6-vision-250815';
 
-// 和弦/调号绘制字体（服务端 canvas）。
-// 优先使用注册的 ChordFont，其次使用可配置字体族；默认 Times New Roman。
-// 可在 .env.local / Vercel 环境变量覆盖：
-// - CHORD_FONT_FILE=fonts/YourFont.ttf （推荐，跨平台稳定）
-// - CHORD_FONT_FAMILY="Times New Roman", Times, serif
-const CHORD_FONT_FAMILY = chordFontRegisteredFamily
-  ? `${chordFontRegisteredFamily}, ${process.env.CHORD_FONT_FAMILY || '"DejaVu Serif", "Times New Roman", Times, serif'}`
-  : (process.env.CHORD_FONT_FAMILY || '"DejaVu Serif", "Times New Roman", Times, serif');
-
-// 箭头字体：优先使用和弦字体，若缺字形则回退到符号字体，避免出现“白色方框”。
-// 可在 .env.local 覆盖：ARROW_FONT_FAMILY="Times New Roman", "Segoe UI Symbol", serif
-const ARROW_FONT_FAMILY = process.env.ARROW_FONT_FAMILY || `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
+// CHORD_FONT_FAMILY / ARROW_FONT_FAMILY 在 ensureFontsReady() 内会按需更新。
 
 // 和弦中心点类型
 type ChordCenter = [string[], number, number];  // [["C"], cx, cy]
@@ -388,6 +405,7 @@ function mergeResults(
 
 // ========== API 路由处理 ==========
 export async function POST(request: NextRequest) {
+  await ensureFontsReady();
   try {
     const formData = await request.formData();
     const imageFile = formData.get('image') as File;
