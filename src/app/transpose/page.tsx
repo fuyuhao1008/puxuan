@@ -1652,12 +1652,17 @@ export default function TransposePage() {
         console.log('📦 没有预存和弦数据，后端将调用大模型识别');
       }
 
+      const tFetch0 = performance.now();
       const apiResponse = await fetch('/api/transpose', {
         method: 'POST',
         body: formData,
       });
+      const tFetch1 = performance.now();
 
       const data = await apiResponse.json();
+      const tFetch2 = performance.now();
+
+      const contentLength = apiResponse.headers.get('content-length');
       console.log('✅ 转调API返回数据:', {
         ok: apiResponse.ok,
         status: apiResponse.status,
@@ -1668,6 +1673,12 @@ export default function TransposePage() {
         originalKey: data.originalKey,
         targetKey: data.targetKey,
         debug: data.debug,
+        timings: {
+          headersMs: Math.round(tFetch1 - tFetch0),
+          bodyJsonMs: Math.round(tFetch2 - tFetch1),
+          totalMs: Math.round(tFetch2 - tFetch0),
+          contentLength,
+        },
       });
 
       if (!apiResponse.ok) {

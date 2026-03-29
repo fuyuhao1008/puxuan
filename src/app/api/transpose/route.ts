@@ -669,7 +669,9 @@ export async function POST(request: NextRequest) {
   const fontsReady = ensureFontsReady();
   try {
     const totalStart = Date.now();
+    const tFormDataStart = Date.now();
     const formData = await request.formData();
+    const formDataMs = Date.now() - tFormDataStart;
     const imageFile = formData.get('image') as File;
     const targetKey = formData.get('targetKey') as string;
     const originalKeyInput = formData.get('originalKey') as string;
@@ -689,6 +691,13 @@ export async function POST(request: NextRequest) {
     let didReuseCenters = false;
     let didCallAi = false;
     let chordsDataParseError: string | null = null;
+
+    let originalBytes = 0;
+    let aiBytes: number | null = null;
+    let aiDataUrlChars: number | null = null;
+    let annotateMs: number | null = null;
+    let preprocessMs: number | null = null;
+    let recognizeMs: number | null = null;
 
     console.log(
       `➡️ /api/transpose start trace=${traceId} onlyRecognizeKey=${onlyRecognizeKey === 'true'} targetKey=${targetKey || ''} hasChordsData=${!!chordsDataStr} chordsDataChars=${chordsDataStr ? chordsDataStr.length : 0} modelMode=${modelMode || ''}`
@@ -801,6 +810,7 @@ export async function POST(request: NextRequest) {
     const tProcessStart = Date.now();
     // 保存原始图片buffer（用于最终标注）
     const originalImageBuffer = Buffer.from(await imageFile.arrayBuffer());
+    originalBytes = originalImageBuffer.length;
 
     // 使用 Canvas 获取原始图片尺寸
     const originalImage = await loadImage(originalImageBuffer);
@@ -841,12 +851,16 @@ export async function POST(request: NextRequest) {
 
     if (!recognitionResult) {
       didCallAi = true;
+      const tPreprocessStart = Date.now();
       const aiImage = await upscaleImageIfNeeded(originalImageBuffer, imageFile.type);
+      preprocessMs = Date.now() - tPreprocessStart;
       imgWidth = aiImage.width;
       imgHeight = aiImage.height;
       wasUpscaled = aiImage.wasUpscaled;
 
       const imageBase64 = `data:${aiImage.mimeType};base64,${aiImage.buffer.toString('base64')}`;
+      aiBytes = aiImage.buffer.length;
+      aiDataUrlChars = imageBase64.length;
 
       console.log(
         `🖼️ AI输入图: inputType=${imageFile.type || 'unknown'} originalBytes=${originalImageBuffer.length} aiBytes=${aiImage.buffer.length} dataUrlChars=${imageBase64.length} upscaled=${aiImage.wasUpscaled}`
@@ -854,7 +868,9 @@ export async function POST(request: NextRequest) {
 
       console.log(`⏱️ 图片预处理耗时: ${Date.now() - tProcessStart}ms (load + maybe upscale + base64)`);
 
+      const tRecognizeStart = Date.now();
       recognitionResult = await recognizeChordsFromImage(imageBase64, imageFile.type, imgWidth, imgHeight, modelMode || 'accurate');
+      recognizeMs = Date.now() - tRecognizeStart;
     } else {
       if (wasUpscaled) {
         console.log(`✅ 复用 centers：推导AI尺寸 ${imgWidth}x${imgHeight}（原始: ${originalWidth}x${originalHeight}）`);
@@ -1156,7 +1172,13 @@ export async function POST(request: NextRequest) {
       transposeResult.targetKey
     );
 
-    console.log(`⏱️ annotateImage 耗时: ${Date.now() - tAnnotateStart}ms`);
+    annotateMs = Date.now() - tAnnotateStart;
+    console.log(`⏱️ annotateImage 耗时: ${annotateMs}ms`);
+
+    const resultImageChars = typeof annotateResult.resultImage === 'string' ? annotateResult.resultImage.length : 0;
+    const commaIndex = typeof annotateResult.resultImage === 'string' ? annotateResult.resultImage.indexOf(',') : -1;
+    const base64Chars = commaIndex >= 0 ? Math.max(0, resultImageChars - commaIndex - 1) : 0;
+    const resultImageBytesEstimate = Math.round(base64Chars * 0.75);
 
     const response = NextResponse.json({
       originalKey: transposeResult.originalKey,
@@ -1180,6 +1202,24 @@ export async function POST(request: NextRequest) {
         chordsDataChars: chordsDataStr ? chordsDataStr.length : 0,
         chordsDataParseError,
         modelMode: modelMode || 'accurate',
+        env: {
+          vercel: !!process.env.VERCEL,
+          vercelRegion: process.env.VERCEL_REGION || null,
+        },
+        sizes: {
+          originalBytes,
+          aiBytes,
+          aiDataUrlChars,
+          resultImageChars,
+          resultImageBytesEstimate,
+        },
+        timingsMs: {
+          formData: formDataMs,
+          preprocess: preprocessMs,
+          recognize: recognizeMs,
+          annotate: annotateMs,
+          total: Date.now() - totalStart,
+        },
       },
     });
     console.log(`⏱️ /api/transpose total: ${Date.now() - totalStart}ms`);
