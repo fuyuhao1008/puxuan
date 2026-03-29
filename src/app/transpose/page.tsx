@@ -360,8 +360,15 @@ export default function TransposePage() {
   const [imageAspectRatio, setImageAspectRatio] = useState<number>(4/3);
 
   // 调试模式：仅在 URL 包含 ?debug=1 时展示关键 debug 信息（方便手机截图）
-  const [debugMode, setDebugMode] = useState<boolean>(false);
+  const [debugMode, setDebugMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('debug') === '1';
+  });
   const [lastTransposeDebug, setLastTransposeDebug] = useState<any>(null);
+  const [lastWarmupDebug, setLastWarmupDebug] = useState<any>(null);
+
+  const hasWarmedTransposeRef = useRef<boolean>(false);
 
   // 自动识别进度（方法2）
   const [autoRecognizeProgress, setAutoRecognizeProgress] = useState<number>(0);
@@ -376,6 +383,59 @@ export default function TransposePage() {
     const params = new URLSearchParams(window.location.search);
     setDebugMode(params.get('debug') === '1');
   }, []);
+
+  // 在进入设置页时预热 /api/transpose（同一路由同一个函数），降低后续 POST 的冷启动/首次连接开销
+  useEffect(() => {
+    if (pageState !== 'settings') return;
+    if (hasWarmedTransposeRef.current) return;
+    hasWarmedTransposeRef.current = true;
+
+    (async () => {
+      const t0 = performance.now();
+      setLastWarmupDebug({ note: 'warming...' });
+      try {
+        const res = await fetch('/api/transpose', { method: 'GET', cache: 'no-store' });
+        const t1 = performance.now();
+        const resHeaders = {
+          date: res.headers.get('date'),
+          server: res.headers.get('server'),
+          contentLength: res.headers.get('content-length'),
+          xVercelId: res.headers.get('x-vercel-id'),
+          xTraceId: res.headers.get('x-trace-id'),
+          serverTiming: res.headers.get('server-timing'),
+        };
+        let json: any = null;
+        try {
+          json = await res.json();
+        } catch {
+          json = null;
+        }
+        const t2 = performance.now();
+
+        setLastWarmupDebug({
+          ok: res.ok,
+          status: res.status,
+          headers: resHeaders,
+          timings: {
+            headersMs: Math.round(t1 - t0),
+            bodyJsonMs: Math.round(t2 - t1),
+            totalMs: Math.round(t2 - t0),
+          },
+          body: json,
+        });
+      } catch (error) {
+        const t1 = performance.now();
+        setLastWarmupDebug({
+          ok: false,
+          status: null,
+          timings: {
+            totalMs: Math.round(t1 - t0),
+          },
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
+  }, [pageState]);
   const [autoRecognizeRetryCount, setAutoRecognizeRetryCount] = useState<number>(0);
   const [manualLongPressedIndex, setManualLongPressedIndex] = useState<number | null>(null); // 手动定位的长按状态
   const [isConfirmingManualRelocate, setIsConfirmingManualRelocate] = useState<boolean>(false); // 手动定位确认状态
@@ -1674,6 +1734,15 @@ export default function TransposePage() {
 
       const contentLength = apiResponse.headers.get('content-length');
 
+      const responseHeaders = {
+        date: apiResponse.headers.get('date'),
+        server: apiResponse.headers.get('server'),
+        contentLength,
+        xVercelId: apiResponse.headers.get('x-vercel-id'),
+        xTraceId: apiResponse.headers.get('x-trace-id'),
+        serverTiming: apiResponse.headers.get('server-timing'),
+      };
+
       const transposeTimings = {
         headersMs: Math.round(tFetch1 - tFetch0),
         bodyJsonMs: Math.round(tFetch2 - tFetch1),
@@ -1684,6 +1753,7 @@ export default function TransposePage() {
       if (debugMode) {
         setLastTransposeDebug({
           timings: transposeTimings,
+          headers: responseHeaders,
           debug: data?.debug,
           ok: apiResponse.ok,
           status: apiResponse.status,
@@ -2516,7 +2586,14 @@ return (
                 <div className="text-gray-500 dark:text-gray-400">debug=1</div>
               </div>
               <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words">
-                {JSON.stringify(lastTransposeDebug ?? { note: 'No transpose request yet' }, null, 2)}
+                {JSON.stringify(
+                  {
+                    warmup: lastWarmupDebug ?? { note: 'No warmup yet' },
+                    transpose: lastTransposeDebug ?? { note: 'No transpose request yet' },
+                  },
+                  null,
+                  2
+                )}
               </pre>
             </div>
           </div>

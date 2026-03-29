@@ -665,6 +665,55 @@ function selectFallbackModel(excludedModel: string): string {
   return availableModels[0].id;
 }
 
+export async function GET() {
+  const t0 = Date.now();
+  const traceId = Math.random().toString(16).slice(2, 10);
+  try {
+    await ensureFontsReady();
+    const ms = Date.now() - t0;
+    const res = NextResponse.json(
+      {
+        ok: true,
+        warmup: true,
+        traceId,
+        ms,
+        env: {
+          vercel: !!process.env.VERCEL,
+          vercelRegion: process.env.VERCEL_REGION || null,
+        },
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+          'x-trace-id': traceId,
+          'Server-Timing': `warmup;dur=${ms}`,
+        },
+      }
+    );
+    return res;
+  } catch (error) {
+    const ms = Date.now() - t0;
+    const res = NextResponse.json(
+      {
+        ok: false,
+        warmup: true,
+        traceId,
+        ms,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store',
+          'x-trace-id': traceId,
+          'Server-Timing': `warmup;dur=${ms}`,
+        },
+      }
+    );
+    return res;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const fontsReady = ensureFontsReady();
   try {
@@ -1222,6 +1271,16 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+    response.headers.set('x-trace-id', traceId);
+
+    const totalMs = Date.now() - totalStart;
+    const serverTimingParts: string[] = [`total;dur=${totalMs}`];
+    if (typeof formDataMs === 'number') serverTimingParts.push(`formData;dur=${formDataMs}`);
+    if (typeof preprocessMs === 'number') serverTimingParts.push(`preprocess;dur=${preprocessMs}`);
+    if (typeof recognizeMs === 'number') serverTimingParts.push(`recognize;dur=${recognizeMs}`);
+    if (typeof annotateMs === 'number') serverTimingParts.push(`annotate;dur=${annotateMs}`);
+    response.headers.set('Server-Timing', serverTimingParts.join(', '));
+
     console.log(`⏱️ /api/transpose total: ${Date.now() - totalStart}ms`);
     return response;
   } catch (error) {
