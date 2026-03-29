@@ -242,7 +242,7 @@ VISION_ASSIST_POST_LITE_WAIT_MS=8000
 # 推荐：把字体文件放到 public/fonts/，并用 CHORD_FONT_FILE 指定它
 CHORD_FONT_FILE=fonts/YourFont.ttf
 # 可选：额外的回退字体族（当 CHORD_FONT_FILE 未配置或注册失败时使用）
-CHORD_FONT_FAMILY="Times New Roman", Times, serif
+CHORD_FONT_FAMILY="DejaVu Serif", "Times New Roman", Times, serif
 ```
 
 #### 提示词优化

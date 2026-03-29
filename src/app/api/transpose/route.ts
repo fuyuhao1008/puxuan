@@ -83,8 +83,8 @@ const MODEL_VISION = process.env.VISION_MODEL_VISION || 'doubao-seed-1-6-vision-
 // - CHORD_FONT_FILE=fonts/YourFont.ttf （推荐，跨平台稳定）
 // - CHORD_FONT_FAMILY="Times New Roman", Times, serif
 const CHORD_FONT_FAMILY = chordFontRegisteredFamily
-  ? `${chordFontRegisteredFamily}, ${process.env.CHORD_FONT_FAMILY || '"Times New Roman", Times, serif'}`
-  : (process.env.CHORD_FONT_FAMILY || '"Times New Roman", Times, serif');
+  ? `${chordFontRegisteredFamily}, ${process.env.CHORD_FONT_FAMILY || '"DejaVu Serif", "Times New Roman", Times, serif'}`
+  : (process.env.CHORD_FONT_FAMILY || '"DejaVu Serif", "Times New Roman", Times, serif');
 
 // 箭头字体：优先使用和弦字体，若缺字形则回退到符号字体，避免出现“白色方框”。
 // 可在 .env.local 覆盖：ARROW_FONT_FAMILY="Times New Roman", "Segoe UI Symbol", serif
