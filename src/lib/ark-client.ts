@@ -5,36 +5,6 @@ export interface ArkConfig {
   baseURL?: string;
 }
 
-let cachedArkDispatcher: any | null | undefined;
-
-async function getArkDispatcher(): Promise<any | undefined> {
-  if (cachedArkDispatcher !== undefined) return cachedArkDispatcher ?? undefined;
-
-  const raw = Number.parseInt(process.env.ARK_CONNECT_TIMEOUT_MS ?? '20000', 10);
-  const connectTimeoutMs = Number.isFinite(raw) ? Math.min(60000, Math.max(1000, raw)) : 20000;
-
-  try {
-    // Node.js fetch uses Undici under the hood; "dispatcher" lets us control connect timeout.
-    // Use dynamic import so builds/environments without direct undici access can still work.
-    const undici: any = await import('undici');
-    const Agent = undici?.Agent;
-    if (!Agent) {
-      cachedArkDispatcher = null;
-      return undefined;
-    }
-
-    cachedArkDispatcher = new Agent({
-      connect: {
-        timeout: connectTimeoutMs,
-      },
-    });
-    return cachedArkDispatcher;
-  } catch {
-    cachedArkDispatcher = null;
-    return undefined;
-  }
-}
-
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string | Array<{
@@ -130,8 +100,6 @@ export async function callArkChat(
     }, timeoutMs)
     : null;
 
-  const dispatcher = await getArkDispatcher();
-
   const response = await fetch(`${baseURL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -140,7 +108,6 @@ export async function callArkChat(
     },
     body: JSON.stringify(payload),
     signal: controller.signal,
-    ...(dispatcher ? ({ dispatcher } as any) : {}),
   });
 
   if (timeoutId) {
@@ -233,8 +200,6 @@ export async function callArkChatDetailed(
     }, timeoutMs)
     : null;
 
-  const dispatcher = await getArkDispatcher();
-
   const response = await fetch(`${baseURL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -243,7 +208,6 @@ export async function callArkChatDetailed(
     },
     body: JSON.stringify(payload),
     signal: controller.signal,
-    ...(dispatcher ? ({ dispatcher } as any) : {}),
   });
 
   if (timeoutId) {

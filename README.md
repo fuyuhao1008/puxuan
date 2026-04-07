@@ -228,10 +228,6 @@ pnpm dev
 ARK_API_KEY=your-api-key-here
 ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3  # 可选
 
-# Ark 连接超时（可选）：解决偶发建连超过 10s 导致 UND_ERR_CONNECT_TIMEOUT
-# 默认 20000ms，可按需调大（建议 15000-30000）
-ARK_CONNECT_TIMEOUT_MS=20000
-
 # 识别模型
 VISION_MODEL_LITE=doubao-seed-2-0-lite-260215
 VISION_MODEL_VISION=doubao-seed-1-6-vision-250815
