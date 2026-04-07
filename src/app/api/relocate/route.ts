@@ -11,8 +11,10 @@ export const runtime = 'nodejs';
 
 const DEFAULT_CHORD_FONT_FAMILY = '"DejaVu Serif", "Times New Roman", Times, serif';
 
-let CHORD_FONT_FAMILY = process.env.CHORD_FONT_FAMILY || DEFAULT_CHORD_FONT_FAMILY;
-let ARROW_FONT_FAMILY = process.env.ARROW_FONT_FAMILY || `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
+// NOTE: 为避免部署平台对环境变量值（空格/换行/制表符等）做校验导致无法配置，这里不再依赖
+// CHORD_FONT_FAMILY / ARROW_FONT_FAMILY 两个环境变量，直接硬编码字体栈。
+let CHORD_FONT_FAMILY = DEFAULT_CHORD_FONT_FAMILY;
+let ARROW_FONT_FAMILY = `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
 
 let fontsReadyPromise: Promise<void> | null = null;
 
@@ -75,8 +77,8 @@ async function ensureFontsReady(): Promise<void> {
         try {
           registerFont(chordFontPath, { family: 'ChordFont' });
           console.log('✅ 和弦字体已注册: ChordFont, 路径:', chordFontPath);
-          CHORD_FONT_FAMILY = `"ChordFont", ${process.env.CHORD_FONT_FAMILY || DEFAULT_CHORD_FONT_FAMILY}`;
-          ARROW_FONT_FAMILY = process.env.ARROW_FONT_FAMILY || `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
+          CHORD_FONT_FAMILY = `"ChordFont", ${DEFAULT_CHORD_FONT_FAMILY}`;
+          ARROW_FONT_FAMILY = `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
         } catch (error) {
           console.warn('⚠️ 和弦字体注册失败，将使用系统默认字体:', error);
         }
