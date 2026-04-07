@@ -286,25 +286,21 @@ function complementRow(
     }
   }
   
-  // 记录已处理过的“主模型/辅助模型”索引。
-  // 注意：这里会在匹配到同一处和弦时把主模型的 x 更新为辅助模型的 x。
-  // 因此不能用 x 值作为唯一标记，否则更新后会导致重复处理/重复补入。
-  const processedMainIndices = new Set<number>();
-  const processedAuxIndices = new Set<number>();
+  // 记录已处理的主模型和弦的 x 坐标
+  const processedXSet = new Set<number>();
   
   // ========== 第一遍：处理匹配的和弦，收集加权平均后的 y 坐标 ==========
   const weightedYList: number[] = [];
-
-  for (let auxIndex = 0; auxIndex < auxChords.length; auxIndex++) {
-    const auxChord = auxChords[auxIndex];
+  
+  for (const auxChord of auxChords) {
     const auxX = auxChord[1];
     const auxY = auxChord[2];
     const auxChordTexts = auxChord[0];
 
     // 在主模型中查找 x 坐标相近且未被处理过的和弦
-    const nearbyIndex = result.findIndex((mainChord, mainIndex) => {
+    const nearbyIndex = result.findIndex(mainChord => {
       const mainX = mainChord[1];
-      return Math.abs(mainX - auxX) <= positionTolerance && !processedMainIndices.has(mainIndex);
+      return Math.abs(mainX - auxX) <= positionTolerance && !processedXSet.has(mainX);
     });
 
     if (nearbyIndex !== -1) {
@@ -316,26 +312,19 @@ function complementRow(
       // 不再进行内容纠正，保留主模型结果
       // Vision模型可能会错误地把"C(A)"识别为"C或A"，而Lite模型格式是正确的
       
-      // 坐标处理：
-      // - x：若两边都返回了同一处和弦，优先使用辅助模型（Vision）的 x。
-      // - y：精准模式直接用主模型 y；快速模式做 y 加权平均。
-      const preferredX = auxX;
-
+      // y 坐标处理：精准模式直接用主模型坐标，快速模式加权平均
       if (skipYWeightedAverage) {
         // 精准模式：直接用主模型的 y 坐标，不参与加权平均
-        result[nearbyIndex] = [nearbyMainChord[0], preferredX, mainY];
-        processedMainIndices.add(nearbyIndex);
-        processedAuxIndices.add(auxIndex);
+        processedXSet.add(mainX);
         weightedYList.push(mainY);
-        console.log(`  📍 精准模式保留主模型y，x取辅助模型: "${formatChordTexts(mainChordTexts)}" 主模型.x=${mainX}, 辅助.x=${auxX}, 主模型.y=${mainY}`);
+        console.log(`  📍 精准模式保留主模型坐标: "${formatChordTexts(mainChordTexts)}" 主模型.y=${mainY}`);
       } else {
         // 快速模式：y 坐标加权平均
         const weightedY = Math.round((mainY * mainWeight + auxY * 1) / (mainWeight + 1));
-        result[nearbyIndex] = [nearbyMainChord[0], preferredX, weightedY];
-        processedMainIndices.add(nearbyIndex);
-        processedAuxIndices.add(auxIndex);
+        result[nearbyIndex] = [nearbyMainChord[0], nearbyMainChord[1], weightedY];
+        processedXSet.add(mainX);
         weightedYList.push(weightedY);
-        console.log(`  🔀 y坐标加权平均，x取辅助模型: "${formatChordTexts(mainChordTexts)}" 主模型.x=${mainX}, 辅助.x=${auxX}; 主模型.y=${mainY}(权重${mainWeight}), 辅助.y=${auxY}(权重1) → 加权.y=${weightedY}`);
+        console.log(`  🔀 y坐标加权平均: "${formatChordTexts(mainChordTexts)}" 主模型.y=${mainY}(权重${mainWeight}), 辅助.y=${auxY}(权重1) → 加权.y=${weightedY}`);
       }
     }
   }
@@ -349,13 +338,18 @@ function complementRow(
   const supplementedCounts = new Map<string, number>();
   
   // ========== 第二遍：处理需要补入的和弦 ==========
-  for (let auxIndex = 0; auxIndex < auxChords.length; auxIndex++) {
-    if (processedAuxIndices.has(auxIndex)) continue;
-
-    const auxChord = auxChords[auxIndex];
+  for (const auxChord of auxChords) {
     const auxX = auxChord[1];
     const auxY = auxChord[2];
     const auxChordTexts = auxChord[0];
+
+    // 检查是否已经被处理过（在第一遍中匹配上了）
+    const wasProcessed = [...processedXSet].some(mainX => {
+      const mainChord = result.find(c => c[1] === mainX);
+      return mainChord && Math.abs(mainChord[1] - auxX) <= positionTolerance;
+    });
+    
+    if (wasProcessed) continue;
 
     // 位置不相近，检查是否需要补入（基于次数统计）
     const auxName = auxChordTexts[0] || '';
