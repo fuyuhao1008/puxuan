@@ -20,11 +20,12 @@ const DEFAULT_CHORD_FONT_FAMILY = '"DejaVu Serif", "Times New Roman", Times, ser
 // 这里会尝试：
 // 1) 从本地文件系统读取 public/<path>
 // 2) 若不存在且在 Vercel（有 VERCEL_URL），从 https://<VERCEL_URL>/<path> 拉取到临时目录再 registerFont
-let CHORD_FONT_FAMILY = process.env.CHORD_FONT_FAMILY || DEFAULT_CHORD_FONT_FAMILY;
+// NOTE: 为避免部署平台对环境变量值（空格/换行/制表符等）做校验导致无法配置，这里不再依赖
+// CHORD_FONT_FAMILY / ARROW_FONT_FAMILY 两个环境变量，直接硬编码字体栈。
+let CHORD_FONT_FAMILY = DEFAULT_CHORD_FONT_FAMILY;
 
 // 箭头字体：优先使用和弦字体，若缺字形则回退到符号字体，避免出现“白色方框”。
-// 可在 .env.local 覆盖：ARROW_FONT_FAMILY="DejaVu Serif", "Segoe UI Symbol", serif
-let ARROW_FONT_FAMILY = process.env.ARROW_FONT_FAMILY || `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
+let ARROW_FONT_FAMILY = `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
 
 let fontsReadyPromise: Promise<void> | null = null;
 
@@ -99,8 +100,8 @@ async function ensureFontsReady(): Promise<void> {
         try {
           registerFont(chordFontPath, { family: 'ChordFont' });
           console.log('✅ 和弦字体已注册: ChordFont, 路径:', chordFontPath);
-          CHORD_FONT_FAMILY = `"ChordFont", ${process.env.CHORD_FONT_FAMILY || DEFAULT_CHORD_FONT_FAMILY}`;
-          ARROW_FONT_FAMILY = process.env.ARROW_FONT_FAMILY || `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
+          CHORD_FONT_FAMILY = `"ChordFont", ${DEFAULT_CHORD_FONT_FAMILY}`;
+          ARROW_FONT_FAMILY = `${CHORD_FONT_FAMILY}, "Segoe UI Symbol", serif`;
         } catch (error) {
           console.warn('⚠️ 和弦字体注册失败，将使用系统默认字体:', error);
         }
