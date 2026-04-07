@@ -2333,8 +2333,8 @@ function calculateChordInfos(
     const textHeight = fontSize * 1.1;
 
     // 计算实际绘制矩形（分别设置横向和纵向padding）
-    // 左侧padding较小，避免遮挡左侧内容；右侧padding较大，覆盖升降号后缀
-    const horizontalPaddingLeft = fontSize * 0.15;  // 左侧padding（减小）
+    // 左侧padding略小于右侧，避免遮挡左侧内容；右侧padding较大，覆盖升降号后缀
+    const horizontalPaddingLeft = fontSize * 0.25;  // 左侧padding（略增）
     const horizontalPaddingRight = fontSize * 0.68; // 右侧padding（保持不变）
     const verticalPadding = fontSize * 0.5;   // 纵向padding
     const rectWidth = Math.round(textWidth + horizontalPaddingLeft + horizontalPaddingRight);
