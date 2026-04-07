@@ -9,6 +9,10 @@ import fs from 'fs';
 
 export const runtime = 'nodejs';
 
+// Prefer a region with better connectivity to Ark CN endpoint.
+// Note: Actual region support depends on your Vercel plan and project settings.
+export const preferredRegion = ['hkg1'];
+
 const DEFAULT_CHORD_FONT_FAMILY = '"DejaVu Serif", "Times New Roman", Times, serif';
 
 // NOTE: 为避免部署平台对环境变量值（空格/换行/制表符等）做校验导致无法配置，这里不再依赖

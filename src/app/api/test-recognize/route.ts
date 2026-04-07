@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { callArkChatDetailed, ArkApiError, type ChatMessage } from '@/lib/ark-client';
 
+export const runtime = 'nodejs';
+
+// Prefer a region with better connectivity to Ark CN endpoint.
+// Note: Actual region support depends on your Vercel plan and project settings.
+export const preferredRegion = ['hkg1'];
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
