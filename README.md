@@ -228,6 +228,10 @@ pnpm dev
 ARK_API_KEY=your-api-key-here
 ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3  # 可选
 
+# Ark 连接超时（可选）：解决偶发建连超过 10s 导致 UND_ERR_CONNECT_TIMEOUT
+# 默认 20000ms，可按需调大（建议 15000-30000）
+ARK_CONNECT_TIMEOUT_MS=20000
+
 # 识别模型
 VISION_MODEL_LITE=doubao-seed-2-0-lite-260215
 VISION_MODEL_VISION=doubao-seed-1-6-vision-250815
@@ -250,8 +254,8 @@ LITE_MODEL_TIMEOUT_MS=60000
 # 服务端绘制字体（解决 Linux/Vercel 缺系统字体导致文字不显示）
 # 推荐：把字体文件放到 public/fonts/，并用 CHORD_FONT_FILE 指定它
 CHORD_FONT_FILE=fonts/YourFont.ttf
-# 可选：额外的回退字体族（当 CHORD_FONT_FILE 未配置或注册失败时使用）
-CHORD_FONT_FAMILY="DejaVu Serif", "Times New Roman", Times, serif
+# 说明：为了避免部署平台对 env 值包含空格的限制，本项目已将字体回退栈硬编码为
+# "DejaVu Serif", "Times New Roman", Times, serif（无需再配置 CHORD_FONT_FAMILY/ARROW_FONT_FAMILY）
 ```
 
 #### 提示词优化
